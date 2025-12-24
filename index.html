@@ -591,7 +591,7 @@
                         const distThumb = Math.hypot(h1[4].x - h2[4].x, h1[4].y - h2[4].y);
                         const indexHigher = (h1[8].y < h1[4].y) && (h2[8].y < h2[4].y);
                         
-                        if (distIndex < 0.025 && distThumb < 0.025 && indexHigher) {
+                        if (distIndex < 0.15 && distThumb < 0.15 && indexHigher) {
                             state = 'HEART'; 
                             foundHeart = true;
                         }
