@@ -495,86 +495,79 @@
         }
 
         function startSystem() {
-            document.getElementById('btnStart').style.display = 'none';
-            bgMusic.play().catch(e => console.log(e));
-            init3D();
+            try {
+                document.getElementById('btnStart').style.display = 'none';
+                const playPromise = bgMusic.play();
+                if (playPromise !== undefined) playPromise.catch(e => console.log("Audio warning: " + e));
+                
+                init3D();
 
-            const video = document.getElementsByClassName('input_video')[0];
-            const canvas = document.getElementById('camera-preview');
-            const ctx = canvas.getContext('2d');
-            
-            // Đảm bảo kích thước đúng
-            canvas.width = 320; 
-            canvas.height = 240;
-            
-            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-            
-            // Tăng độ tin cậy tracking lên để giảm rung
-            hands.setOptions({ 
-                maxNumHands: 2, 
-                modelComplexity: 1, 
-                minDetectionConfidence: 0.6, // Tăng từ 0.5 lên 0.6
-                minTrackingConfidence: 0.6 
-            });
-
-            hands.onResults(results => {
-                ctx.clearRect(0,0, canvas.width, canvas.height); 
-                ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-
-                // --- LOGIC TRÁI TIM (Giữ nguyên) ---
-                if (results.multiHandLandmarks.length === 2) {
-                    const h1 = results.multiHandLandmarks[0]; const h2 = results.multiHandLandmarks[1];
-                    const distIndex = Math.hypot(h1[8].x - h2[8].x, h1[8].y - h2[8].y);
-                    const distThumb = Math.hypot(h1[4].x - h2[4].x, h1[4].y - h2[4].y);
-                    if (distIndex < 0.15 && distThumb < 0.15) {
-                        state = 'HEART'; return;
+                const video = document.getElementsByClassName('input_video')[0];
+                const canvas = document.getElementById('camera-preview');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 320; canvas.height = 240;
+                
+                const hands = new Hands({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
                     }
-                }
+                });
 
-                // --- LOGIC NHẬN DIỆN MỚI (FIX RUNG LẮC) ---
-                if(results.multiHandLandmarks.length > 0) {
-                    const lm = results.multiHandLandmarks[0];
-                    
-                    // Làm mượt chuyển động xoay (giảm giật khi xoay ảnh)
-                    // Lấy vị trí hiện tại pha trộn với vị trí mới (Lerp)
-                    handX = handX * 0.7 + lm[9].x * 0.3;
+                hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 
-                    // Tính toán khoảng cách
-                    const tips = [8,12,16,20]; const wrist = lm[0];
-                    let openDist = 0; tips.forEach(i => openDist += Math.hypot(lm[i].x-wrist.x, lm[i].y-wrist.y));
-                    const avgDist = openDist / 4;
-                    const pinchDist = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
+                hands.onResults(results => {
+                    ctx.clearRect(0,0, canvas.width, canvas.height); 
+                    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-                    // --- THUẬT TOÁN STICKY (CHỐNG LOẠN) ---
-                    
-                    // 1. Xác định ngưỡng Pinch dựa trên trạng thái hiện tại
-                    // Nếu đang Zoom rồi (PHOTO) thì cho phép nới tay ra xíu (0.08) vẫn giữ Zoom
-                    // Nếu chưa Zoom thì bắt buộc phải chụm sát (0.05) mới kích hoạt
-                    const pinchThreshold = (state === 'PHOTO') ? 0.08 : 0.05;
-                    
-                    // 2. Xác định ngưỡng Nắm tay (Fist)
-                    // Thu hẹp lại xíu (0.22) để tránh nhầm với Pinch
-                    const fistThreshold = 0.22; 
+                    // Logic Tim (giữ nguyên)
+                    if (results.multiHandLandmarks.length === 2) {
+                        const h1 = results.multiHandLandmarks[0]; const h2 = results.multiHandLandmarks[1];
+                        if (Math.hypot(h1[8].x - h2[8].x, h1[8].y - h2[8].y) < 0.15 && Math.hypot(h1[4].x - h2[4].x, h1[4].y - h2[4].y) < 0.15) {
+                            state = 'HEART'; return;
+                        }
+                    }
 
-                    // 3. Logic ưu tiên: Kiểm tra Pinch TRƯỚC -> Nắm tay -> Xòe
-                    if (pinchDist < pinchThreshold) {
-                        state = 'PHOTO'; 
-                    } else if (avgDist < fistThreshold) {
-                        state = 'TREE'; 
+                    if(results.multiHandLandmarks.length > 0) {
+                        const lm = results.multiHandLandmarks[0];
+                        handX = handX * 0.7 + lm[9].x * 0.3; 
+                        
+                        const tips = [8,12,16,20]; const wrist = lm[0];
+                        let openDist = 0; tips.forEach(i => openDist += Math.hypot(lm[i].x-wrist.x, lm[i].y-wrist.y));
+                        const avgDist = openDist / 4; 
+                        const pinchDist = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
+
+                        // --- CẬP NHẬT LOGIC ƯU TIÊN ---
+                        
+                        // 1. Tăng độ nhạy cho Nắm tay (nới lỏng từ 0.22 lên 0.28 để dễ nhận diện hơn)
+                        const fistThreshold = 0.28; 
+                        
+                        // 2. Sticky Pinch (giữ nguyên)
+                        const pinchThreshold = (state === 'PHOTO') ? 0.08 : 0.05;
+
+                        // 3. Đảo ngược logic: Kiểm tra NẮM TAY (TREE) trước!
+                        // Nếu đang nắm tay -> Chắc chắn là Cây thông (dù ngón cái có chạm ngón trỏ hay không)
+                        if (avgDist < fistThreshold) {
+                            state = 'TREE'; 
+                        } 
+                        // Nếu tay đang mở, mới kiểm tra xem có Chụm ngón tay (Pinch) không
+                        else if (pinchDist < pinchThreshold) {
+                            state = 'PHOTO'; 
+                        } 
+                        // Còn lại là Xòe tay
+                        else {
+                            state = 'EXPLODE'; 
+                        }
                     } else {
-                        state = 'EXPLODE'; 
+                        state = 'TREE'; 
                     }
-                } else {
-                    // Không thấy tay thì về mặc định
-                    state = 'TREE'; 
-                }
-            });
+                });
 
-            const cameraUtils = new Camera(video, {
-                onFrame: async () => { await hands.send({image: video}); }, 
-                width: 320, height: 240
-            });
-            cameraUtils.start();
+                const cameraUtils = new Camera(video, {
+                    onFrame: async () => { await hands.send({image: video}); }, width: 320, height: 240
+                });
+                cameraUtils.start().catch(e => showError("Camera blocked: " + e));
+
+            } catch(e) { showError("Fatal: " + e.message); }
         }
 
         window.addEventListener('resize', () => {
