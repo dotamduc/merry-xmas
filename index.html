@@ -482,7 +482,7 @@
                         // Điều kiện: Chạm rất sát (0.035) VÀ Ngón trỏ cao hơn ngón cái
                         const indexHigher = (h1[8].y < h1[4].y) && (h2[8].y < h2[4].y);
                         
-                        if (distIndex < 0.035 && distThumb < 0.035 && indexHigher) {
+                        if (distIndex < 0.025 && distThumb < 0.025 && indexHigher) {
                             state = 'HEART'; 
                             foundHeart = true;
                         }
